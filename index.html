@@ -1,0 +1,311 @@
+
+<html>
+
+    <head>
+    
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    
+    <script src='https://code.jquery.com/jquery-3.4.1.min.js'></script>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.2.0/peerjs.min.js'></script>
+    <script src="https://www.gstatic.com/firebasejs/7.13.2/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/7.13.2/firebase-database.js"></script>
+    
+    
+    
+    
+    <script>
+      // Your web app's Firebase configuration
+      var firebaseConfig = {
+        apiKey: "AIzaSyBEjxdbKd_pnjBGo4zsrfauR_BytfZVEww",
+        authDomain: "kojiro2ph.firebaseapp.com",
+        databaseURL: "https://kojiro2ph.firebaseio.com",
+        projectId: "kojiro2ph",
+        storageBucket: "kojiro2ph.appspot.com",
+        messagingSenderId: "776120943992",
+        appId: "1:776120943992:web:08e438447af0db2abc748d"
+      };
+      // Initialize Firebase
+      firebase.initializeApp(firebaseConfig);
+    
+    
+    function test() {
+        var ref = firebase.database().ref('my/chat');
+    
+        ref.on("value", function(s) {
+            data = s.val();
+            k = Object.keys(data);
+            // console.log(k);
+            k.forEach(e => console.log(e));
+        }, function (error) {
+           console.log("Error: " + error.code);
+    
+        });
+    }
+    
+    
+    ////////////////////////////////////////////////////////////////////////////
+    
+    ////////////////////////////////////////////////////////////////////////////
+    
+    var peerClient;
+    var MPID;
+    var OPID;
+    var conn;
+    var currentPeerConnection;
+    
+    // socket = io();
+    
+    function init() {
+        var ref = firebase.database().ref('webRTC');
+    
+        if(localStorage.getItem("fid") == null) {
+            console.log("first time");
+            var npr = ref.push({peerID:"aaaaa", name:""});
+            localStorage.setItem("fid",npr.key);
+        } else {
+            console.log("my fid is " + localStorage.getItem("fid"));
+            var rs = firebase.database().ref('webRTC/' + localStorage.getItem("fid"));
+            rs.on("value",function(s) {
+                // console.log(s.val());
+                var info = s.val();
+                console.log(info.peerID);
+                document.getElementById("myname").value = info.name;
+                list_member();
+            }, function(e) {
+            });
+    
+        }
+    
+    
+    
+        //peerClient = new Peer(null, { debug: 2 });
+        peerClient = new Peer({
+            bug: 3,
+            secure: true,
+            port: 443,
+            config: {
+                    "iceServers": [
+                        {
+                                "urls": "stun:stun.l.google.com:19302"
+                        }
+                ]
+            }
+        });
+    
+    
+        // if peer connection is opened
+        peerClient.on('open', function() {
+            MPID = peerClient.id;
+            $("#mystt").html("online");
+            $("#mystt").css("background-color","orange");
+            $("#mystt").css("width","100px");
+            $("#mystt").css("text-align","center");
+            console.log("update! peerID: " + MPID);
+            var rs = firebase.database().ref('webRTC/' + localStorage.getItem("fid"));
+            rs.update({peerID: MPID});
+        });
+    
+        peerClient.on('error', function(err) {
+            console.log("ERR:" + err.type);
+            $("#stt_" + OPID).html("(offline)");
+        });
+          
+        peerClient.on('call', function(call) {
+            // answer with my media stream
+            call.answer(localMediaStream);
+    
+            // close current connection if exists
+            if (currentPeerConnection) {
+                  currentPeerConnection.close();
+            }
+    
+            // keep call as currentPeerConnection
+            currentPeerConnection = call;
+    
+            // wait for partner's stream
+            call.on('stream', function(stream) {
+                if($("#ov").length == 0) {
+                    var o = document.createElement("video");
+                    document.body.appendChild(o);
+                    console.log("append");
+                    
+                    // o.srcObject = stream;
+                    if ('srcObject' in o) {
+                        // alert("1");
+                        o.srcObject = stream;
+                    } else if (navigator.mozGetUserMedia) {
+                        // alert("2");
+                        o.mozSrcObject = stream;
+                    } else {
+                        // alert("3");
+                        o.src = (window.URL || window.webkitURL).createObjectURL(stream);
+                    }
+    
+                    o.id = "ov";
+                    $('#ov').attr('playsinline','');
+                     o.play();
+                }
+            });
+    
+            // if connection is closed
+            call.on('close', function() {
+                console.log('Connection is closed.');
+                $("#ov").remove();
+            });
+        });
+    
+    }
+    
+    function list_member() {
+        var strhtml = "";
+        var rs = firebase.database().ref('webRTC');
+        rs.on("value",function(s) {
+            strhtml = "";
+            s.forEach(function(data) {
+                var minfo = data.val();
+                if(minfo.name != undefined && minfo.name != document.getElementById("myname").value) {
+                    console.log(minfo.peerID.length);
+    
+                    if(minfo.peerID.length == 16 && minfo.name.length != 0) {
+                        strhtml = strhtml + "<div style='float: left;'><a href=\"javascript: connect_to_partner('" + minfo.peerID + "');\"><b>" + minfo.name + "</b></a></div>&nbsp;&nbsp;<div id='stt_" + minfo.peerID + "' style='float: left;'></div> <br>";
+                    } else if(minfo.name.length != 0) {
+                        strhtml = strhtml + "<b>" + minfo.name + "</b><br>";
+                    }
+                }
+            });
+            $("#minfo").html(strhtml);
+        }, function(e) {
+        });
+    
+    }
+    
+    function updateMyName() {
+        console.log("update!" + document.getElementById("myname").value);
+        var rs = firebase.database().ref('webRTC/' + localStorage.getItem("fid"));
+        rs.update({name: document.getElementById("myname").value});
+    }
+    
+    
+    init();
+    
+    
+    </script>
+    
+    <script>
+    
+    var localMediaStream;
+    
+    var handleSuccess = function (stream) {
+        console.log("stream success");
+        localMediaStream = stream;
+    
+        if(0) {
+            if($("#mv").length == 0) {
+                var o = document.createElement("video");
+                document.body.appendChild(o);
+                console.log("append");
+    
+                // o.srcObject = stream;
+                if ('srcObject' in o) {
+                    // alert("1");
+                    o.srcObject = stream;
+                } else if (navigator.mozGetUserMedia) {
+                    // alert("2");
+                    o.mozSrcObject = stream;
+                } else {
+                    // alert("3");
+                    o.src = (window.URL || window.webkitURL).createObjectURL(stream);
+                }
+    
+                o.id = "mv";
+                $('#mv').attr('playsinline','');
+                 o.play();
+            }
+        }
+    
+    };
+    
+    if (!navigator.mediaDevices && !navigator.getUserMedia && !navigator.webkitGetUserMedia && !navigator.mozGetUserMedia && !navigator.msGetUserMedia) {
+        alert('User Media API not supported.');
+    }
+    
+    navigator.mediaDevices.getUserMedia({video: true, audio: true}).then(handleSuccess);
+    
+    
+    function connect_to_partner(opid) {
+    
+        OPID = opid;
+    
+        console.log("connect to " + OPID + "....");
+    
+        if (!peerClient) {
+            return;
+        }
+    
+        // connect to partner
+        // conn = peerClient.connect(OPID, {
+        //	serialization: 'json'
+        // });
+    
+        var call = peerClient.call(OPID, localMediaStream);
+    
+        // close current connection if exists
+        if (currentPeerConnection) {
+            currentPeerConnection.close();
+        }
+    
+        // keep call as currentPeerConnection
+        currentPeerConnection = call;
+    
+        // wait for partner's stream
+        call.on('stream', function(stream) {
+            if($("#ov").length == 0) {
+                var o = document.createElement("video");
+                document.body.appendChild(o);
+                console.log("append");
+    
+                // o.srcObject = stream;
+                if ('srcObject' in o) {
+                    // alert("1");
+                    o.srcObject = stream;
+                } else if (navigator.mozGetUserMedia) {
+                    // alert("2");
+                    o.mozSrcObject = stream;
+                } else {
+                    // alert("3");
+                    o.src = (window.URL || window.webkitURL).createObjectURL(stream);
+                }
+    
+                o.id = "ov";
+                $('#ov').attr('playsinline','');
+                 o.play();
+            }
+        });
+    
+        // if connection is closed
+        call.on('close', function() {
+            console.log('Connection is closed.');
+            $("#ov").remove();
+        });
+    
+    }
+    
+    </script>
+    
+    </head>
+    
+    
+    
+    <body>
+    
+    
+    <div style="float: left;">my name: <input id="myname"> <button onclick="updateMyName();">Update</button></div> <div id="mystt" style="float: left;"></div>
+    
+    <div style="clear: both;"></div>
+    
+    <div id="minfo"></div>
+    
+    
+    </body>
+    </html>
