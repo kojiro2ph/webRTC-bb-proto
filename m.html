@@ -1,0 +1,479 @@
+
+<!DOCTYPE html>
+<html>
+
+    <head>
+    
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    
+    <script src='https://code.jquery.com/jquery-3.4.1.min.js'></script>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.2.0/peerjs.min.js'></script>
+    <script src="https://www.gstatic.com/firebasejs/7.13.2/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/7.13.2/firebase-database.js"></script>
+
+    <script src="//cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/leaflet-src.js"></script>
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/leaflet.css"/>
+    
+    
+    <script>
+      // Your web app's Firebase configuration
+      var firebaseConfig = {
+        apiKey: "AIzaSyBEjxdbKd_pnjBGo4zsrfauR_BytfZVEww",
+        authDomain: "kojiro2ph.firebaseapp.com",
+        databaseURL: "https://kojiro2ph.firebaseio.com",
+        projectId: "kojiro2ph",
+        storageBucket: "kojiro2ph.appspot.com",
+        messagingSenderId: "776120943992",
+        appId: "1:776120943992:web:08e438447af0db2abc748d"
+      };
+      // Initialize Firebase
+      firebase.initializeApp(firebaseConfig);
+    
+    
+    function test() {
+        var ref = firebase.database().ref('my/chat');
+    
+        ref.on("value", function(s) {
+            data = s.val();
+            k = Object.keys(data);
+            // console.log(k);
+            k.forEach(e => console.log(e));
+        }, function (error) {
+           console.log("Error: " + error.code);
+    
+        });
+    }
+    
+    
+    ////////////////////////////////////////////////////////////////////////////
+    
+    ////////////////////////////////////////////////////////////////////////////
+    
+    var peerClient;
+    //var OPIDs = [];
+    var ONIDs = [];
+    var MPID;
+    var OPID;
+    var conn;
+    var currentPeerConnection;
+    
+
+
+    var map; //leaflet obj
+    function addLmaps() {
+        //Leaflet初期設定
+        map = L.map('map').setView([35.6935095　, 139.6623465], 10);
+        
+        L.tileLayer('https:\/\/a.tiles.mapbox.com\/v4\/mapbox.streets\/{z}\/{x}\/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NDg1bDA1cjYzM280NHJ5NzlvNDMifQ.d6e-nNyBDtmQCVwVNivz7A', {
+            attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        //Leafletに用意されたsvgを使う 
+        map._initPathRoot();	
+        map.panTo(L.latLng(35.6935095　, 139.6623465));
+
+    }
+    function addMark(lat,lng,name) {
+        L.marker([lat　, lng]).addTo(map).bindPopup(name).openPopup();
+    }
+
+    // socket = io();
+    
+    function init() {
+
+        addLmaps();
+        //var ref = firebase.database().ref('webRTC');
+    
+        if(localStorage.getItem("fid") == null) {
+            console.log("first time");
+            var npr = firebase.database().ref('webRTC').push({peerID:"aaaaa", name:""});
+            localStorage.setItem("fid",npr.key);
+        }
+
+        console.log("my fid is " + localStorage.getItem("fid"));
+        var rs = firebase.database().ref('webRTC/' + localStorage.getItem("fid"));
+        rs.once("value",function(s) {
+            // console.log(s.val());
+            var info = s.val();
+            console.log("my previous peerID is [" + info.peerID + "]");
+            document.getElementById("myname").value = info.name;
+            $("#div_vn_" + "ovmycamera").html(document.getElementById("myname").value);
+            getMyPos();
+        }, function(e) {
+        });
+
+        //peerClient = new Peer(null, { debug: 2 });
+        peerClient = new Peer({
+            bug: 3,
+            secure: true,
+            port: 443,
+            config: {
+                    "iceServers": [
+                        {
+                            "urls": "stun:stun.l.google.com:19302"
+                        }
+                ]
+            }
+        });
+    
+    
+        // if peer connection is opened
+        peerClient.on('open', function() {
+            MPID = peerClient.id;
+            $("#mystt").html("online");
+            $("#mystt").css("background-color","orange");
+            $("#mystt").css("width","100px");
+            $("#mystt").css("text-align","center");
+            console.log("update! peerID: " + MPID);
+            var rs = firebase.database().ref('webRTC/' + localStorage.getItem("fid"));
+            rs.update({peerID: MPID});
+            list_member();
+
+
+            //console.log(peerClient.connections);
+        });
+    
+        peerClient.on('connection', function(dc) {
+            //var strhtml = "";
+            // OPIDs.forEach(
+            //     function(e) {
+            //         if(e.id == dc.peer) {
+            //             strhtml = strhtml + "<div style='float: left;'><a href=\"javascript: connect_to_partner('" + e.id + "');\"><b>" + e.name + "</b></a></div>&nbsp;&nbsp;<div id='stt_" + e.id + "' style='float: left;'></div> <br>";
+            //             $("#minfo").html(strhtml);
+            //             console.log(e.name + "is online !!!");
+            //         }
+            //     }
+            // );
+            dc.on('open', function() {
+
+                console.log("DC with");
+                console.log(dc);
+
+                // Receive messages
+                dc.on('data', function(rd) {
+                    console.log('Received ONE', rd);
+                    addMark(rd.lat,rd.lng,rd.name);
+                    addOnline(rd.id,rd.name);
+                });
+
+                // Send messages
+                console.log('SEND: Hello!');
+                dc.send({id: MPID, lat: lat, lng: lng, name: document.getElementById("myname").value});
+            });
+
+
+
+
+            //$("#minfo").html(strhtml);
+        });
+
+        peerClient.on('error', function(err) {
+            //console.log("ERR:" + err);
+            //$("#stt_" + OPID).html("(offline)");
+        });
+          
+        peerClient.on('call', function(call) {
+
+            //console.log("peerClient.on('call') happens...");
+            //console.log(call);
+
+            // answer with my media stream
+            call.answer(localMediaStream);
+    
+            // close current connection if exists
+            //if (currentPeerConnection) {
+            //      currentPeerConnection.close();
+            //}
+    
+            // keep call as currentPeerConnection
+            //currentPeerConnection = call;
+    
+            // wait for partner's stream
+            call.on('stream', function(stream) {
+                AM(call,stream);
+            });
+    
+            // if connection is closed
+            call.on('close', function() {
+                console.log('Connection is closed.');
+                $("#div_ov" + call.peer).remove();
+            });
+        });
+    
+    }
+    
+    function list_member() {
+        var strhtml = "";
+        var rs = firebase.database().ref('webRTC');
+        rs.on("value",function(s) {
+            strhtml = "";
+            ONIDs = [];
+            s.forEach(function(data) {
+                var minfo = data.val();
+                if(minfo.name != undefined && minfo.name != document.getElementById("myname").value) {
+                    // console.log(minfo.peerID.length);
+    
+                    if(minfo.peerID.length == 16 && minfo.name.length != 0) {
+                        //var af = true;
+                        //OPIDs.forEach(function(e) { if(e.id == minfo.peerID) { af = false; } });
+                        //if(af) {
+                        //    OPIDs.push({ id: minfo.peerID, name: minfo.name });
+                        //}
+
+
+                        var dcon = peerClient.connect(minfo.peerID,{ metadata: { name: minfo.name } });
+                        //OPIDs[minfo.peerID] = minfo.name;
+                        //console.log("connecting to " + minfo.name + " ...." + minfo.id);
+
+                        dcon.on('open', function() {
+                            // console.log("CONNECTED!");
+                            console.log(dcon.metadata.name + " is online");
+                            addOnline(dcon.peer,dcon.metadata.name);
+
+                            dcon.on('data', function(rd) {
+                                console.log('Received TWO', rd);
+                                addMark(rd.lat,rd.lng,rd.name);
+                                addOnline(rd.id,rd.name);
+                            });
+
+                            // Send messages
+                            console.log('SEND: Hello!');
+                            dcon.send({id: MPID, lat: lat, lng: lng, name: document.getElementById("myname").value});
+                        });
+
+                        // var dcon = peerClient.connect(minfo.peerID);
+                        // console.log(dcon);
+                        // strhtml = strhtml + "<div style='float: left;'><a href=\"javascript: connect_to_partner('" + minfo.peerID + "');\"><b>" + minfo.name + "</b></a></div>&nbsp;&nbsp;<div id='stt_" + minfo.peerID + "' style='float: left;'></div> <br>";
+                    } else if(minfo.name.length != 0) {
+                        // strhtml = strhtml + "<b>" + minfo.name + "</b><br>";
+                    }
+                }
+            });
+            // $("#minfo").html(strhtml);
+        }, function(e) {
+        });
+
+        // setTimeout(list_member, 10000);
+    }
+    
+    function updateMyName() {
+        console.log("update!" + document.getElementById("myname").value);
+        var rs = firebase.database().ref('webRTC/' + localStorage.getItem("fid"));
+        rs.update({name: document.getElementById("myname").value});
+    }
+    
+    
+
+    $(document).ready(function(){
+        init();
+    });
+    
+    </script>
+    
+    <script>
+    
+    var localMediaStream;
+    
+    var handleSuccess = function (stream) {
+        console.log("stream success");
+        localMediaStream = stream;
+
+        AM({peer: "mycamera"},stream);
+    
+        if(0) {
+            if($("#mv").length == 0) {
+                var o = document.createElement("video");
+                document.body.appendChild(o);
+                console.log("append");
+    
+                // o.srcObject = stream;
+                if ('srcObject' in o) {
+                    // alert("1");
+                    o.srcObject = stream;
+                } else if (navigator.mozGetUserMedia) {
+                    // alert("2");
+                    o.mozSrcObject = stream;
+                } else {
+                    // alert("3");
+                    o.src = (window.URL || window.webkitURL).createObjectURL(stream);
+                }
+    
+                o.id = "mv";
+                $('#mv').attr('playsinline','');
+                 o.play();
+            }
+        }
+    
+    };
+    
+    if (!navigator.mediaDevices && !navigator.getUserMedia && !navigator.webkitGetUserMedia && !navigator.mozGetUserMedia && !navigator.msGetUserMedia) {
+        alert('User Media API not supported.');
+    }
+    
+    navigator.mediaDevices.getUserMedia({video: true, audio: true}).then(handleSuccess);
+    
+    
+    function connect_to_partner(opid) {
+    
+        OPID = opid;
+    
+        console.log("connect to " + OPID + "....");
+    
+        if (!peerClient) {
+            return;
+        }
+    
+        // connect to partner
+        // conn = peerClient.connect(OPID, {
+        //	serialization: 'json'
+        // });
+    
+        var call = peerClient.call(OPID, localMediaStream);
+    
+        // close current connection if exists
+        //if (currentPeerConnection) {
+        //    currentPeerConnection.close();
+        //}
+    
+        // keep call as currentPeerConnection
+        //currentPeerConnection = call;
+    
+        // wait for partner's stream
+        call.on('stream', function(stream) {
+            AM(call,stream);
+        });
+    
+        // if connection is closed
+        call.on('close', function() {
+            console.log('Connection is closed.');
+            $("#div_ov" + call.peer).remove();
+        });
+    
+    }
+
+
+    function AM(call,stream) {
+        //console.log(stream);
+        //console.log(call.peer);
+        if($("#ov" + call.peer).length == 0) {
+            var o = document.createElement("video");
+            document.body.appendChild(o);
+            console.log("append");
+            
+            // o.srcObject = stream;
+            if ('srcObject' in o) {
+                console.log("src.srcObject");
+                o.srcObject = stream;
+            } else if (navigator.mozGetUserMedia) {
+                console.log("src.mozSrcObject");
+                o.mozSrcObject = stream;
+            } else {
+                console.log("src._");
+                o.src = (window.URL || window.webkitURL).createObjectURL(stream);
+            }
+
+            o.id = "ov" + call.peer;
+            $("#" + o.id).attr('playsinline','');
+            $("#" + o.id).css('width','50%');
+            $("#" + o.id).wrap("<div id='div_" + o.id + "' style='position:relative; float:left;'>");
+            $("#div_" + o.id).append("<div id='div_vn_" + o.id + "' style='position:absolute; left: 0; bottom: 0; z-index: 1; background-color:#F4F6F6; opacity: 0.55;'>");
+
+            if(call.peer == "mycamera") {
+                $("#" + o.id).prop('muted', true);
+                $("#div_vn_" + o.id).html(document.getElementById("myname").value);
+            } else {
+                $("#div_vn_" + o.id).html(ONIDs[call.peer].name);
+            }
+            o.play();
+
+
+            var ov = $('[id^="ov"]');
+            // console.log(ov);
+            for(var i = 0; i < ov.length; i++) {
+                console.log(ov[i].id);
+                $("#div_" + ov[i].id).css('width',(100 / ov.length).toString() + "%");
+                $("#" + ov[i].id).css('width',"100%");
+            }
+        }
+    }
+
+    function addOnline(id,name) {
+        ONIDs[id] = { id: id, name: name };
+        show_online();
+    }
+
+    function show_online() {
+        var strhtml = "";
+        console.log("show online");
+        //console.log(ONIDs);
+        Object.keys(ONIDs).forEach(
+            function (key) {
+                strhtml = strhtml + "<div style='float: left;'><a href=\"javascript: connect_to_partner('" + ONIDs[key].id + "');\"><b>" + ONIDs[key].name + "</b></a></div>&nbsp;&nbsp;<div id='stt_" + ONIDs[key].id + "' style='float: left;'></div> <br>";
+                //console.log(strhtml);
+            }
+        );
+        $("#minfo").html(strhtml);
+    }
+
+    
+    </script>
+
+
+    <script type="text/javascript">
+    var watchID;
+    var lat;
+    var lng;
+    var geoOptions = {
+                            maximumAge : 600000 ,
+                            timeout : 10000 ,
+                            enableHighAccuracy : true
+                            };
+    var WAIT = 1000;
+    
+    function getMyPos() { 
+        //watchID = navigator.geolocation.watchPosition( onSuccess , onErr , geoOptions );
+        watchID = navigator.geolocation.getCurrentPosition( onSuccess , onErr , geoOptions );
+    }
+    
+    function onSuccess( pos ){
+      lat = pos.coords.latitude ;
+      lng = pos.coords.longitude ;
+      addMark(lat,lng,document.getElementById("myname").value);
+      
+        // setTimeout( 
+        // function(){ 
+        //     navigator.geolocation.clearWatch(watchID);
+        //     watchID = navigator.geolocation.watchPosition( onSuccess , onErr , geoOptions );
+        // },
+        // WAIT
+        // );
+    }
+    
+    function onErr( err ){
+      console.log(err);
+    }
+    </script>
+
+
+
+
+
+    </head>
+    
+    
+    
+    <body>
+    
+
+    
+    <div style="float: left;">my name: <input id="myname"> <button onclick="updateMyName();">Update</button></div> <div id="mystt" style="float: left;"></div>
+    
+    <div style="clear: both;"></div>
+    
+    <div id="minfo"></div>
+    
+    <div id="map" style="width: 50%;height: 250px;"></div>    
+    
+    </body>
+    </html>
